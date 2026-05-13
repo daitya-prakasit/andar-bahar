@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Andar Bahar - Wallet (INR)</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{
+            font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+            background:var(--tg-theme-bg-color,#0d0d1a);
+            color:var(--tg-theme-text-color,#fff);
+            min-height:100vh;padding:15px;padding-bottom:80px;
+        }
+        .container{max-width:420px;margin:0 auto;text-align:center;}
+        h1{font-size:1.8em;margin-bottom:15px;background:linear-gradient(45deg,#0098ea,#00bcd4);
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+        .wallet-card{
+            background:rgba(0,152,234,0.1);border:2px solid #0098ea;border-radius:20px;
+            padding:20px;margin-bottom:14px;
+        }
+        .wallet-icon{font-size:3.5em;margin-bottom:8px;}
+        .wallet-address{font-family:monospace;font-size:.85em;color:#0098ea;word-break:break-all;margin:8px 0;}
+        .wallet-balance{font-size:1.8em;font-weight:bold;color:#ffd700;margin:10px 0;}
+        .wallet-balance span{font-size:.6em;color:#aaa;}
+        .btn{
+            padding:12px 18px;font-size:1em;font-weight:bold;border:none;border-radius:50px;
+            cursor:pointer;color:#fff;width:100%;margin:8px 0;transition:.3s;
+        }
+        .btn:active{transform:scale(.98)}
+        .btn-primary{background:linear-gradient(135deg,#ffd700,#ff9800);color:#000}
+        .btn-outline{background:transparent;border:2px solid rgba(255,255,255,0.18);color:#fff;}
+        .divider{border:none;border-top:1px solid rgba(255,255,255,0.1);margin:12px 0;}
+        .info-row{display:flex;justify-content:space-between;padding:10px 0;font-size:.9em;border-bottom:1px solid rgba(255,255,255,0.03);}        
+        .info-label{color:#888;}.info-value{color:#fff;font-weight:bold;}
+        .tx-list{text-align:left;max-height:220px;overflow-y:auto;padding:6px 0}
+        .tx-item{display:flex;justify-content:space-between;padding:8px 10px;background:rgba(255,255,255,0.03);border-radius:8px;margin:6px 0;font-size:.85em;}
+        .tx-send{color:#f44336}.tx-receive{color:#4caf50}
+        .hidden{display:none!important}
+        .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.9);display:flex;justify-content:space-around;padding:10px 0;border-top:1px solid rgba(255,255,255,0.1);z-index:999;}
+        .nav-item{text-align:center;color:#888;font-size:.75em;cursor:pointer;transition:.3s;text-decoration:none;flex:1;}
+        .nav-item.active{color:#0098ea;}
+        .nav-icon{font-size:1.5em;display:block;margin-bottom:2px;}
+        .row{display:flex;gap:8px;margin-top:8px}
+        input[type=number]{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.2);color:#fff}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>💰 Wallet (INR)</h1>
+
+    <div class="wallet-card">
+        <div class="wallet-icon">💵</div>
+        <div style="font-size:.9em;color:#888;margin-bottom:6px;text-align:left;">Account</div>
+        <div class="wallet-address" id="userId">--</div>
+        <div class="wallet-balance" id="balance">₹0.00 <span>INR</span></div>
+
+        <div class="row">
+            <input id="amountInput" type="number" placeholder="Amount (INR)" min="1">
+            <button class="btn btn-primary" id="depositBtn">Deposit</button>
+        </div>
+        <div class="row">
+            <button class="btn btn-outline" id="withdrawBtn">Withdraw</button>
+            <button class="btn btn-outline" id="refreshBtn">Refresh</button>
+        </div>
+        <div style="margin-top:8px;color:#bbb;font-size:.85em;text-align:left">Quick: <button class="btn btn-outline" style="width:auto;display:inline-block;padding:6px 10px;margin-left:6px;" onclick="quickAdd(100)">+₹100</button> <button class="btn btn-outline" style="width:auto;display:inline-block;padding:6px 10px;margin-left:6px;" onclick="quickAdd(500)">+₹500</button></div>
+    </div>
+
+    <div class="divider"></div>
+    <p style="font-size:.9em;color:#888;text-align:left;margin-bottom:6px;">📊 Recent Transactions</p>
+    <div class="tx-list" id="txList">
+        <!-- populated dynamically -->
+    </div>
+</div>
+
+<!-- Bottom Navigation -->
+<div class="bottom-nav">
+    <a class="nav-item" href="game.html">
+        <span class="nav-icon">🎮</span>Game
+    </a>
+    <a class="nav-item active" href="wallet.html">
+        <span class="nav-icon">💎</span>Wallet
+    </a>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey:"AIzaSyAQ4sLC47HVflDVQgyAC2gWnUo87wlQitQ",
+        authDomain:"mogbf-525cb.firebaseapp.com",
+        projectId:"mogbf-525cb",
+        storageBucket:"mogbf-525cb.firebasestorage.app",
+        messagingSenderId:"451875719799",
+        appId:"1:451875719799:web:3980050067ddc5388ed472"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth=firebase.auth();
+    const db=firebase.firestore();
+    const tg=window.Telegram.WebApp;tg.expand();tg.ready();
+
+    let currentUser=null;
+
+    auth.onAuthStateChanged(user=>{
+        if(!user) window.location.href='index.html';
+        currentUser=user; if(user) initForUser(user.uid);
+    });
+
+    async function initForUser(uid){
+        document.getElementById('userId').textContent = uid;
+        await loadUserData(uid);
+        bindUI();
+        loadTransactions(uid);
+    }
+
+    function bindUI(){
+        document.getElementById('depositBtn').addEventListener('click',onDeposit);
+        document.getElementById('withdrawBtn').addEventListener('click',onWithdraw);
+        document.getElementById('refreshBtn').addEventListener('click',()=>{loadUserData(currentUser.uid)});
+    }
+
+    async function loadUserData(uid){
+        try{
+            const doc = await db.collection('users').doc(uid).get();
+            let bal = 0.0;
+            if(doc.exists){
+                const d = doc.data();
+                bal = d.balance!=null ? Number(d.balance) : 1000.0;
+            } else {
+                // create default user doc
+                await db.collection('users').doc(uid).set({balance:1000.0,wins:0,losses:0,total:0});
+                bal = 1000.0;
+            }
+            updateBalanceDisplay(bal);
+        }catch(e){console.error('loadUserData',e)}
+    }
+
+    function updateBalanceDisplay(amount){
+        const a = Number(amount)||0;
+        document.getElementById('balance').textContent = '₹'+a.toFixed(2)+' ';
+    }
+
+    function quickAdd(amount){
+        document.getElementById('amountInput').value = amount;
+    }
+
+    async function onDeposit(){
+        const v = Number(document.getElementById('amountInput').value);
+        if(!v || v<=0){alert('Sahi amount dalo');return}
+        await changeBalance(v,'deposit');
+    }
+
+    async function onWithdraw(){
+        const v = Number(document.getElementById('amountInput').value);
+        if(!v || v<=0){alert('Sahi amount dalo');return}
+        // check balance
+        const uid = currentUser.uid;
+        const doc = await db.collection('users').doc(uid).get();
+        const bal = doc.exists && doc.data().balance!=null ? Number(doc.data().balance) : 0;
+        if(v>bal){alert('Balance kam hai');return}
+        await changeBalance(-v,'withdraw');
+    }
+
+    async function changeBalance(delta, type){
+        try{
+            const uid = currentUser.uid;
+            const userRef = db.collection('users').doc(uid);
+            await db.runTransaction(async tx=>{
+                const doc = await tx.get(userRef);
+                if(!doc.exists) tx.set(userRef,{balance:0,wins:0,losses:0,total:0});
+                const prev = doc.exists && doc.data().balance!=null ? Number(doc.data().balance) : 0;
+                const next = Math.round((prev + delta)*100)/100;
+                if(next<0) throw new Error('Insufficient funds');
+                tx.update(userRef,{balance:next});
+                // add transaction doc
+                const txRef = db.collection('users').doc(uid).collection('transactions').doc();
+                tx.set(txRef, { type:type, amount:Math.abs(delta), date:firebase.firestore.FieldValue.serverTimestamp() });
+            });
+            await loadUserData(uid);
+            await loadTransactions(uid);
+            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(type==='deposit'?'success':'warning');
+        }catch(e){console.error('changeBalance',e);alert('Transaction failed')}
+    }
+
+    // Load last 20 transactions
+    async function loadTransactions(uid){
+        try{
+            const q = await db.collection('users').doc(uid).collection('transactions').orderBy('date','desc').limit(20).get();
+            const list = document.getElementById('txList'); list.innerHTML='';
+            if(q.empty){ list.innerHTML='<div style="color:#888">No transactions</div>'; return }
+            q.forEach(doc=>{
+                const d = doc.data();
+                const el = document.createElement('div'); el.className='tx-item';
+                const left = document.createElement('span'); left.textContent = (d.type==='deposit'? '💰 Deposit' : d.type==='withdraw'? '💸 Withdraw' : d.type);
+                const right = document.createElement('span'); right.textContent = (d.type==='deposit'? '+' : '-') + '₹'+(d.amount||0).toFixed(2);
+                right.className = d.type==='deposit' ? 'tx-receive' : 'tx-send';
+                el.appendChild(left); el.appendChild(right); list.appendChild(el);
+            });
+        }catch(e){console.error('loadTransactions',e)}
+    }
+
+    tg.BackButton.onClick(()=>tg.close());tg.BackButton.show();
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# Node modules
+node_modules/
+functions/node_modules/
+
+# Firebase and local env
+.firebase/
+.env
+
+# Logs
+npm-debug.log*
+ yarn-debug.log*
+ yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets
+serviceAccountKey.json
+*.pem
+*.key
+.secrets/
+
+# Build outputs
+dist/
+build/
+
+# Ignore IDE files
+.vscode/
+.idea/

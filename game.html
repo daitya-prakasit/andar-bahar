@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Andar Bahar - Game</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{
+            font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+            background:var(--tg-theme-bg-color,#0d0d1a);
+            color:var(--tg-theme-text-color,#fff);
+            min-height:100vh;padding:15px;padding-bottom:80px;
+        }
+        .container{max-width:420px;margin:0 auto;text-align:center;}
+        h1{font-size:1.8em;margin-bottom:5px;background:linear-gradient(45deg,#0098ea,#00bcd4);
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+
+        /* ========== TIMER SECTION ========== */
+        .timer-section{
+            background:rgba(0,0,0,0.4);border:2px solid rgba(255,255,255,0.1);
+            border-radius:15px;padding:15px;margin:15px 0;
+        }
+        .timer-circle{
+            width:100px;height:100px;border-radius:50%;margin:0 auto 10px;
+            background:rgba(0,0,0,0.5);border:6px solid #ffd700;
+            display:flex;align-items:center;justify-content:center;
+            font-size:2.5em;font-weight:bold;color:#ffd700;
+            transition:border-color .5s;
+            animation:pulse 1s infinite;
+        }
+        .timer-circle.ending{border-color:#f44336;color:#f44336;animation:pulseFast .5s infinite;}
+        .timer-circle.dealing{border-color:#0098ea;color:#0098ea;animation:none;}
+        @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+        @keyframes pulseFast{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+        .timer-label{font-size:.85em;color:#aaa;}
+        .timer-phase{font-size:1em;font-weight:bold;color:#ffd700;margin-top:5px;}
+
+        /* ========== BETTING SECTION ========== */
+        .betting-section{
+            background:rgba(255,215,0,0.05);border:2px solid rgba(255,215,0,0.2);
+            border-radius:15px;padding:15px;margin:15px 0;
+        }
+        .balance-display{
+            display:flex;justify-content:space-between;align-items:center;
+            background:rgba(0,0,0,0.3);padding:10px 15px;border-radius:10px;margin-bottom:12px;
+        }
+        .balance-label{color:#888;font-size:.85em;}
+        .balance-amount{color:#ffd700;font-weight:bold;font-size:1.2em;}
+        .chip-selector{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:10px;}
+        .chip{
+            background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.2);
+            border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:bold;
+            transition:.3s;color:#fff;font-size:.9em;text-align:center;min-width:60px;
+        }
+        .chip.selected{background:linear-gradient(135deg,#ffd700,#ffaa00);border-color:#ffd700;color:#000;box-shadow:0 0 20px rgba(255,215,0,0.5);}
+        .chip:disabled{opacity:.4;pointer-events:none;}
+        .chip-amount{font-size:1em;}
+        .chip-win{font-size:.65em;color:#4caf50;display:block;}
+        .chip.selected .chip-win{color:#000;}
+
+        /* ========== BET POOL ========== */
+        .bet-pool{
+            display:flex;gap:10px;margin:10px 0;
+        }
+        .pool-box{
+            flex:1;background:rgba(255,255,255,0.03);border-radius:10px;
+            padding:10px;border:2px solid rgba(255,255,255,0.1);
+        }
+        .pool-label{font-weight:bold;font-size:.85em;margin-bottom:4px;}
+        .pool-amount{font-weight:bold;font-size:1em;}
+        .pool-andar .pool-label{color:#ff6b6b}.pool-andar .pool-amount{color:#ff6b6b}
+        .pool-bahar .pool-label{color:#6bb5ff}.pool-bahar .pool-amount{color:#6bb5ff}
+        .pool-count{font-size:.7em;color:#888;}
+
+        /* ========== GAME STYLES ========== */
+        .joker-section{background:rgba(0,152,234,0.08);border:2px solid #0098ea;border-radius:15px;padding:15px;margin-bottom:15px;}
+        .joker-label{font-size:.85em;color:#0098ea;letter-spacing:2px;text-transform:uppercase;}
+        .joker-card{font-size:3em;animation:float 2s ease-in-out infinite;}
+        @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+        .joker-value{color:#0098ea;font-weight:bold;}
+        .piles-container{display:flex;gap:10px;margin-bottom:15px;}
+        .pile{flex:1;background:rgba(255,255,255,0.03);border-radius:12px;padding:10px;min-height:90px;border:2px solid rgba(255,255,255,0.1);transition:.4s;}
+        .pile.winner{border-color:#4caf50;box-shadow:0 0 20px rgba(76,175,80,0.5);}
+        .pile.loser{opacity:.5;}
+        .pile-title{font-weight:bold;margin-bottom:6px;}
+        .pile-andar .pile-title{color:#ff6b6b}.pile-bahar .pile-title{color:#6bb5ff}
+        .pile-cards{display:flex;flex-wrap:wrap;gap:3px;justify-content:center;min-height:30px;align-items:center;}
+        .mini-card{background:#fff;color:#000;padding:3px 7px;border-radius:4px;font-weight:bold;font-size:.75em;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+        .mini-card.match{background:#4caf50;color:#fff;animation:pop .5s ease-out;font-size:.9em;padding:5px 10px;}
+        @keyframes pop{0%{transform:scale(.3)}60%{transform:scale(1.3)}100%{transform:scale(1)}}
+
+        .btn{padding:14px;font-size:1em;font-weight:bold;border:none;border-radius:50px;cursor:pointer;color:#fff;width:100%;margin:5px 0;transition:.3s;}
+        .btn:active{transform:scale(.95)}
+        .btn-andar{background:linear-gradient(135deg,#e74c3c,#c0392b)}
+        .btn-bahar{background:linear-gradient(135deg,#3498db,#2980b9)}
+        .btn:disabled{opacity:.4;pointer-events:none;}
+        .btn-reset{background:rgba(255,255,255,0.1);border:2px solid rgba(255,255,255,0.3);margin-top:10px;}
+
+        .score-board{display:flex;justify-content:space-around;margin-bottom:12px;font-size:.85em;}
+        .score{font-weight:bold;color:#ffd700;font-size:1.2em;}
+        .result{font-size:1.2em;font-weight:bold;margin:12px 0;padding:10px;border-radius:10px;}
+        .result.win{background:rgba(76,175,80,.2);color:#4caf50;border:1px solid #4caf50}
+        .result.lose{background:rgba(244,67,54,.2);color:#f44336;border:1px solid #f44336}
+        .hidden{display:none!important}
+        .divider{border:none;border-top:1px solid rgba(255,255,255,0.1);margin:10px 0;}
+        .warning-msg{background:rgba(255,152,0,.15);border:1px solid #ff9800;color:#ff9800;padding:10px;border-radius:10px;font-size:.85em;margin:10px 0;}
+
+        .bet-status{font-size:.9em;color:#ffd700;margin:5px 0;}
+
+        /* Bottom Nav */
+        .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,.9);display:flex;justify-content:space-around;padding:10px 0;border-top:1px solid rgba(255,255,255,.1);z-index:999;}
+        .nav-item{text-align:center;color:#888;font-size:.75em;cursor:pointer;text-decoration:none;flex:1;}
+        .nav-item.active{color:#0098ea}
+        .nav-icon{font-size:1.5em;display:block;margin-bottom:2px;}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🎮 Andar Bahar</h1>
+
+    <!-- ========== TIMER SECTION ========== -->
+    <div class="timer-section">
+        <div class="timer-circle" id="timerCircle">45</div>
+        <div class="timer-label" id="timerLabel">BETTING OPEN</div>
+        <div class="timer-phase" id="timerPhase">⏱️ Jaldi karein!</div>
+    </div>
+
+    <!-- ========== BETTING SECTION ========== -->
+    <div class="betting-section">
+        <div class="balance-display">
+            <span class="balance-label">💰 Balance</span>
+            <span class="balance-amount" id="balance">₹1000.00 INR</span>
+        </div>
+
+        <!-- Bet Pool Info -->
+        <div class="bet-pool">
+                <div class="pool-box pool-andar">
+                <div class="pool-label">🔴 ANDAR</div>
+                <div class="pool-amount" id="poolAndar">₹0.00 INR</div>
+                <div class="pool-count" id="poolAndarCount">0 bets</div>
+            </div>
+            <div class="pool-box pool-bahar">
+                <div class="pool-label">🔵 BAHAR</div>
+                <div class="pool-amount" id="poolBahar">₹0.00 INR</div>
+                <div class="pool-count" id="poolBaharCount">0 bets</div>
+            </div>
+        </div>
+
+        <!-- Chip Selector -->
+        <div class="chip-selector" id="chipSelector">
+            <div class="chip" onclick="selectBet(0.1)"><span class="chip-amount">0.1</span><span class="chip-win">2x: 0.2</span></div>
+            <div class="chip selected" onclick="selectBet(0.5)"><span class="chip-amount">0.5</span><span class="chip-win">2x: 1.0</span></div>
+            <div class="chip" onclick="selectBet(1)"><span class="chip-amount">1</span><span class="chip-win">2x: 2.0</span></div>
+            <div class="chip" onclick="selectBet(2)"><span class="chip-amount">2</span><span class="chip-win">2x: 4.0</span></div>
+            <div class="chip" onclick="selectBet(5)"><span class="chip-amount">5</span><span class="chip-win">2x: 10.0</span></div>
+        </div>
+
+        <!-- Bet Buttons -->
+        <div id="betButtons" style="display:flex;gap:10px;margin-top:10px;">
+            <button class="btn btn-andar" id="btnAndar" onclick="placeBet('Andar')">🔴 ANDAR</button>
+            <button class="btn btn-bahar" id="btnBahar" onclick="placeBet('Bahar')">🔵 BAHAR</button>
+        </div>
+        <div id="betWarning" class="warning-msg hidden"></div>
+        <div class="bet-status" id="betStatus"></div>
+    </div>
+
+    <!-- Score Board -->
+    <div class="score-board">
+        <div>🏆 Wins: <span class="score" id="wins">0</span></div>
+        <div>😞 Loss: <span class="score" id="losses">0</span></div>
+        <div>🎯 Total: <span class="score" id="total">0</span></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Joker Display -->
+    <div class="joker-section">
+        <div class="joker-label">🃏 JOKER CARD</div>
+        <div class="joker-card" id="jokerEmoji">🂠</div>
+        <div class="joker-value" id="jokerText"></div>
+    </div>
+
+    <!-- Piles -->
+    <div class="piles-container">
+        <div class="pile pile-andar" id="andarPile"><div class="pile-title">🔴 ANDAR</div><div class="pile-cards" id="andarCards"></div></div>
+        <div class="pile pile-bahar" id="baharPile"><div class="pile-title">🔵 BAHAR</div><div class="pile-cards" id="baharCards"></div></div>
+    </div>
+
+    <div id="resultDisplay"></div>
+    <button class="btn btn-reset hidden" id="resetBtn" onclick="resetGame()">🔄 Next Round</button>
+</div>
+
+<!-- Bottom Nav -->
+<div class="bottom-nav">
+    <a class="nav-item active" href="game.html"><span class="nav-icon">🎮</span>Game</a>
+    <a class="nav-item" href="wallet.html"><span class="nav-icon">💎</span>Wallet</a>
+</div>
+
+<script>
+    // ==================== FIREBASE ====================
+    const firebaseConfig = {
+        apiKey:"AIzaSyAQ4sLC47HVflDVQgyAC2gWnUo87wlQitQ",
+        authDomain:"mogbf-525cb.firebaseapp.com",
+        projectId:"mogbf-525cb",
+        storageBucket:"mogbf-525cb.firebasestorage.app",
+        messagingSenderId:"451875719799",
+        appId:"1:451875719799:web:3980050067ddc5388ed472"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth=firebase.auth();const db=firebase.firestore();
+    const tg=window.Telegram.WebApp;tg.expand();tg.ready();
+
+    // ==================== GAME STATE ====================
+    const SUITS=['♥️','♦️','♣️','♠️'];
+    const CARD_NAMES={1:'A',11:'J',12:'Q',13:'K'};
+    const BETTING_TIME=45; // seconds
+    const DEALING_TIME=15; // seconds
+    const MULTIPLIER=2;
+
+    let deck=[],jokerCard=null,andarPile=[],baharPile=[];
+    let gamePhase='betting'; // 'betting' | 'dealing' | 'result'
+    let gameOver=true,winner=null,playerBet=null,playerBetAmount=0;
+    let wins=0,losses=0,total=0;
+    let currentBet=50,balance=1000.0; // balance in INR
+
+    // Pool
+    let poolAndar=0,poolBahar=0,poolAndarCount=0,poolBaharCount=0;
+    // Track this round's bets for pool
+    let roundBets=[]; // [{side:'Andar',amount:50}]
+
+    let timerInterval=null;
+    let timeLeft=BETTING_TIME;
+
+    // ==================== AUTH ====================
+    auth.onAuthStateChanged(user=>{
+        if(!user)window.location.href='index.html';
+        else{loadUserData(user.uid);startNewRound();}
+    });
+
+    // ==================== TIMER ====================
+    function startTimer(){
+        timeLeft=BETTING_TIME;
+        gamePhase='betting';
+        updateTimerDisplay();
+        document.getElementById('timerCircle').classList.remove('ending','dealing');
+        document.getElementById('timerLabel').textContent='BETTING OPEN';
+        document.getElementById('timerPhase').textContent='⏱️ Jaldi karein!';
+        setBetButtonsEnabled(true);
+
+        timerInterval=setInterval(()=>{
+            timeLeft--;
+            updateTimerDisplay();
+
+            if(timeLeft<=10&&timeLeft>0){
+                document.getElementById('timerCircle').classList.add('ending');
+                document.getElementById('timerPhase').textContent='⚠️ Last chance!';
+            }
+
+            if(timeLeft<=0){
+                clearInterval(timerInterval);
+                startDealingPhase();
+            }
+        },1000);
+    }
+
+    function updateTimerDisplay(){
+        document.getElementById('timerCircle').textContent=timeLeft;
+    }
+
+    function startDealingPhase(){
+        gamePhase='dealing';
+        timeLeft=DEALING_TIME;
+        document.getElementById('timerCircle').classList.remove('ending');
+        document.getElementById('timerCircle').classList.add('dealing');
+        document.getElementById('timerLabel').textContent='DEALING...';
+        document.getElementById('timerPhase').textContent='🎰 Result aane wala hai!';
+        setBetButtonsEnabled(false);
+
+        // Determine winner: LEAST BET SIDE WINS
+        determineWinner();
+
+        // Start dealing animation
+        dealCardsForTimer();
+
+        // Dealing countdown
+        timerInterval=setInterval(()=>{
+            timeLeft--;
+            updateTimerDisplay();
+            if(timeLeft<=0){
+                clearInterval(timerInterval);
+                endGame();
+            }
+        },1000);
+    }
+
+    function updateTimerDisplay(){
+        document.getElementById('timerCircle').textContent=timeLeft;
+    }
+
+    function determineWinner(){
+        // LEAST bet side WINS
+        if(poolAndar<poolBahar){
+            winner='Andar';
+        }else if(poolBahar<poolAndar){
+            winner='Bahar';
+        }else{
+            // Equal bets → Random
+            winner=Math.random()<0.5?'Andar':'Bahar';
+        }
+        // Reveal winner at endGame
+    }
+
+    function setBetButtonsEnabled(enabled){
+        document.getElementById('btnAndar').disabled=!enabled;
+        document.getElementById('btnBahar').disabled=!enabled;
+        document.querySelectorAll('.chip').forEach(chip=>{
+            if(enabled)chip.removeAttribute('disabled');
+            else chip.setAttribute('disabled','disabled');
+        });
+    }
+
+    // ==================== BETTING ====================
+    function selectBet(amount){
+        if(gamePhase!=='betting')return;
+        currentBet=amount;
+        document.querySelectorAll('.chip').forEach(c=>c.classList.remove('selected'));
+        try{event.target.closest('.chip').classList.add('selected');}catch(e){}
+        document.getElementById('betWarning').classList.add('hidden');
+        if(tg.HapticFeedback)tg.HapticFeedback.selectionChanged();
+    }
+
+    async function placeBet(side){
+        if(gamePhase!=='betting')return;
+        if(balance<currentBet){
+            document.getElementById('betWarning').classList.remove('hidden');
+            document.getElementById('betWarning').textContent='⚠️ Balance nahi hai!';
+            if(tg.HapticFeedback)tg.HapticFeedback.notificationOccurred('error');
+            return;
+        }
+
+        // Disable betting UI while request in flight
+        setBetButtonsEnabled(false);
+        document.getElementById('betStatus').textContent = '⏳ Placing bet...';
+
+        try{
+            // Call Cloud Function (callable)
+            const placeBetFn = firebase.functions().httpsCallable('placeBet');
+            const res = await placeBetFn({ amount: currentBet, side });
+            if(res && res.data && res.data.success){
+                // Server accepted the bet — reflect changes locally
+                balance = Math.round((balance - currentBet) * 100) / 100;
+                if(side==='Andar'){
+                    poolAndar = Math.round((poolAndar + currentBet) * 100) / 100; poolAndarCount++;
+                } else {
+                    poolBahar = Math.round((poolBahar + currentBet) * 100) / 100; poolBaharCount++;
+                }
+                roundBets.push({side,amount:currentBet});
+                playerBet = side; playerBetAmount = currentBet;
+                updatePoolDisplay(); updateBalanceDisplay();
+                document.getElementById('betStatus').textContent = `✅ Aapne ${side} pe ₹${currentBet.toFixed(2)} INR lagaya!`;
+                if(tg.HapticFeedback)tg.HapticFeedback.impactOccurred('medium');
+            } else {
+                throw new Error('Server rejected bet');
+            }
+        }catch(err){
+            console.error('placeBet callable error', err);
+            document.getElementById('betWarning').classList.remove('hidden');
+            document.getElementById('betWarning').textContent = '⚠️ Bet place nahi hua: ' + (err.message||'Error');
+            document.getElementById('betStatus').textContent = '';
+            if(tg.HapticFeedback)tg.HapticFeedback.notificationOccurred('error');
+        }finally{
+            // Re-enable only if still in betting phase
+            if(gamePhase==='betting') setBetButtonsEnabled(true);
+        }
+    }
+
+    function updatePoolDisplay(){
+        document.getElementById('poolAndar').textContent='₹'+poolAndar.toFixed(2)+' INR';
+        document.getElementById('poolBahar').textContent='₹'+poolBahar.toFixed(2)+' INR';
+        document.getElementById('poolAndarCount').textContent=poolAndarCount+' bets';
+        document.getElementById('poolBaharCount').textContent=poolBaharCount+' bets';
+    }
+
+    function updateBalanceDisplay(){
+        document.getElementById('balance').textContent='₹'+balance.toFixed(2)+' INR';
+    }
+
+    // ==================== GAME ====================
+    function gcn(v){return CARD_NAMES[v]||v.toString()}
+    function gcd(v,s){return `${gcn(v)}${s}`}    
+    function createDeck(){
+        deck=[];for(let v=1;v<=13;v++)for(let s of SUITS)deck.push({value:v,suit:s});
+        for(let i=deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]]}
+    }
+    function drawJoker(){
+        jokerCard=deck.pop();
+        document.getElementById('jokerEmoji').textContent=gcn(jokerCard.value);
+        document.getElementById('jokerText').textContent=`${gcn(jokerCard.value)} ${jokerCard.suit}`;
+    }
+    function clearUI(){
+        ['andarCards','baharCards'].forEach(id=>document.getElementById(id).innerHTML='');
+        ['andarPile','baharPile'].forEach(id=>document.getElementById(id).classList.remove('winner','loser'));
+        document.getElementById('resultDisplay').innerHTML='';
+    }
+
+    function startNewRound(){
+        createDeck();andarPile=[];baharPile=[];
+        gameOver=false;playerBet=null;playerBetAmount=0;
+        poolAndar=0;poolBahar=0;poolAndarCount=0;poolBaharCount=0;
+        roundBets=[];
+        clearUI();drawJoker();
+        document.getElementById('resultDisplay').innerHTML='';
+        document.getElementById('resetBtn').classList.add('hidden');
+        document.getElementById('betButtons').classList.remove('hidden');
+        document.getElementById('betStatus').textContent='';
+        document.getElementById('betWarning').classList.add('hidden');
+        document.getElementById('timerCircle').classList.remove('ending','dealing');
+        updatePoolDisplay();
+        startTimer();
+    }
+
+    function resetGame(){startNewRound();}
+
+    function addCard(pn,card,match=false){
+        const arr=pn==='Andar'?andarPile:baharPile;
+        arr.push(card);
+        const c=document.getElementById(pn==='Andar'?'andarCards':'baharCards');
+        const el=document.createElement('span');
+        el.className='mini-card'+(match?' match':'');
+        el.textContent=gcd(card.value,card.suit);
+        c.appendChild(el);
+        el.scrollIntoView({behavior:'smooth',block:'nearest'});
+    }
+
+    function dealCardsForTimer(){
+        let turn='Andar';
+        const dealSpeed=(DEALING_TIME*1000)/26; // Card speed based on time
+        const interval=setInterval(()=>{
+            if(gamePhase!=='dealing'||deck.length===0){clearInterval(interval);return;}
+            const card=deck.pop();
+            const match=card.value===jokerCard.value;
+            addCard(turn,card,match);
+            if(match){clearInterval(interval);return;}
+            turn=turn==='Andar'?'Bahar':'Andar';
+        },dealSpeed);
+    }
+
+    function endGame(){
+        gamePhase='result';
+        gameOver=true;
+        clearInterval(timerInterval);
+
+        document.getElementById('timerCircle').classList.remove('dealing');
+        document.getElementById('timerCircle').textContent='🏆';
+        document.getElementById('timerLabel').textContent='RESULT';
+        document.getElementById('timerPhase').textContent='';
+
+        document.getElementById('andarPile').classList.remove('winner','loser');
+        document.getElementById('baharPile').classList.remove('winner','loser');
+
+        if(winner==='Andar'){
+            document.getElementById('andarPile').classList.add('winner');
+            document.getElementById('baharPile').classList.add('loser');
+        }else{
+            document.getElementById('baharPile').classList.add('winner');
+            document.getElementById('andarPile').classList.add('loser');
+        }
+
+        document.getElementById('betButtons').classList.add('hidden');
+        document.getElementById('resetBtn').classList.remove('hidden');
+        setBetButtonsEnabled(false);
+
+        total++;
+        const rd=document.getElementById('resultDisplay');
+        const poolInfo=`<br><small>Andar Pool: ₹${poolAndar.toFixed(2)} | Bahar Pool: ₹${poolBahar.toFixed(2)}</small>`;
+        const winnerInfo=`<br><small>🏆 Least bet side WINS: ${winner}</small>`;
+
+        if(playerBet&&playerBet===winner){
+            wins++;
+            const winAmount=Math.round((playerBetAmount*MULTIPLIER)*100)/100;
+            balance=Math.round((balance+winAmount)*100)/100;
+            updateBalanceDisplay();
+            rd.innerHTML=`<div class="result win">🎉 AAP JEET GAYE! 🎊<br>+₹${winAmount.toFixed(2)} INR (2x)${winnerInfo}${poolInfo}</div>`;
+            if(tg.HapticFeedback)tg.HapticFeedback.notificationOccurred('success');
+        }else if(playerBet&&playerBet!==winner){
+            losses++;
+            const lossAmt = playerBetAmount.toFixed ? playerBetAmount.toFixed(2) : (''+playerBetAmount);
+            rd.innerHTML=`<div class="result lose">😞 AAP HAAR GAYE.<br>-₹${lossAmt} INR${winnerInfo}${poolInfo}</div>`;
+            if(tg.HapticFeedback)tg.HapticFeedback.notificationOccurred('error');
+        }else{
+            rd.innerHTML=`<div class="result" style="background:rgba(255,255,255,0.05);color:#aaa;">😐 No Bet Placed${winnerInfo}${poolInfo}</div>`;
+        }
+
+        document.getElementById('wins').textContent=wins;
+        document.getElementById('losses').textContent=losses;
+        document.getElementById('total').textContent=total;
+        saveUserData(wins,losses,total,balance);
+        tg.sendData(JSON.stringify({wins,losses,total,balance:lastNumber(balance),lastResult:playerBet===winner?'win':playerBet?'lose':'none',winner,poolAndar,poolBahar}));
+
+        // Auto next round after 10 sec
+        setTimeout(()=>{if(gamePhase==='result')startNewRound();},10000);
+    }
+
+    function lastNumber(n){try{return Number(n);}catch(e){return n}}
+
+    // ==================== FIREBASE ====================
+    async function loadUserData(uid){
+        try{
+            const doc=await db.collection('users').doc(uid).get();
+            if(doc.exists){
+                const d=doc.data();
+                wins=d.wins||0;losses=d.losses||0;total=d.total||0;
+                balance=d.balance||1000.0;
+                document.getElementById('wins').textContent=wins;
+                document.getElementById('losses').textContent=losses;
+                document.getElementById('total').textContent=total;
+                updateBalanceDisplay();
+            }
+        }catch(e){console.error(e)}
+    }
+    async function saveUserData(w,l,t,bal){
+        const u=auth.currentUser;if(!u)return;
+        try{await db.collection('users').doc(u.uid).update({wins:w,losses:l,total:t,balance:bal,lastPlayed:firebase.firestore.FieldValue.serverTimestamp()});}catch(e){console.error(e)}
+    }
+    tg.BackButton.onClick(()=>tg.close());tg.BackButton.show();
+</script>
+</body>
+</html>

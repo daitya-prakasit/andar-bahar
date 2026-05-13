@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin - Andar Bahar</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:#0d0d1a;color:#fff;padding:16px}
+    .card{background:#111827;padding:16px;border-radius:8px;margin-bottom:12px}
+    button{padding:10px 12px;border-radius:8px;border:none;cursor:pointer}
+    .btn-primary{background:#ffd700;color:#000}
+    .btn-danger{background:#f44336}
+    .round-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+    input, select{padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:#fff}
+  </style>
+</head>
+<body>
+  <h1>Admin Dashboard</h1>
+  <div class="card" id="createCard">
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="roundIdInput" placeholder="round id (auto if blank)" />
+      <select id="winnerSelect"><option value="Andar">Andar</option><option value="Bahar">Bahar</option></select>
+      <input id="multiplierInput" type="number" value="2" min="1" style="width:80px" />
+      <button class="btn-primary" id="createRoundBtn">Create Round</button>
+    </div>
+    <p style="color:#bbb;font-size:13px;margin-top:8px">Create a round document to represent a game round. After creating and (optionally) closing it with a winner, use Settle.</p>
+  </div>
+  
+  <div class="card" id="setWinnerCard" style="display:none">
+    <h3>Set Winner</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="winnerRoundId" placeholder="select a round from list" />
+      <select id="winnerSetSelect"><option value="Andar">Andar</option><option value="Bahar">Bahar</option></select>
+      <button id="setWinnerBtn" class="btn-primary">Set Winner & Close</button>
+    </div>
+    <p style="color:#bbb;font-size:13px;margin-top:8px">Set the winner for a round and close it. Only admins can perform this.</p>
+  </div>
+
+  <div class="card">
+    <h3>Open Rounds</h3>
+    <div id="roundList">Loading...</div>
+  </div>
+
+  <div class="card">
+    <h3>Actions</h3>
+    <div style="display:flex;gap:8px">
+      <button id="refreshBtn">Refresh List</button>
+      <button id="settleBtn" class="btn-primary">Settle Selected</button>
+    </div>
+    <p id="actionMsg" style="color:#bbb"></p>
+  </div>
+
+<script>
+  const firebaseConfig = {
+    apiKey:"AIzaSyAQ4sLC47HVflDVQgyAC2gWnUo87wlQitQ",
+    authDomain:"mogbf-525cb.firebaseapp.com",
+    projectId:"mogbf-525cb",
+    storageBucket:"mogbf-525cb.firebasestorage.app",
+    messagingSenderId:"451875719799",
+    appId:"1:451875719799:web:3980050067ddc5388ed472"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const funcs = firebase.functions();
+
+  let selectedRoundId = null;
+
+  // Simple auth: signInWithPopup not allowed on some hosts; admin should use existing login method.
+  auth.onAuthStateChanged(async user=>{
+    if(!user){
+      document.body.insertAdjacentHTML('beforeend','<div style="position:fixed;bottom:10px;left:10px"><button id="loginBtn">Sign in (admin)</button></div>');
+      document.getElementById('loginBtn').addEventListener('click',()=>{
+        alert('Please sign in using the app authentication (console)');
+      });
+    } else {
+      // Check custom claims to enforce admin UI
+      const token = await user.getIdTokenResult();
+      const isAdmin = token.claims && token.claims.admin;
+      if(!isAdmin){
+        // hide admin controls
+        document.getElementById('createCard').style.display = 'none';
+        document.getElementById('setWinnerCard').style.display = 'none';
+        document.getElementById('settleBtn').style.display = 'none';
+        document.getElementById('actionMsg').textContent = 'You are signed in but not an admin.';
+      } else {
+        // show admin controls
+        document.getElementById('setWinnerCard').style.display = 'block';
+        loadRounds();
+      }
+    }
+  });
+
+  document.getElementById('createRoundBtn').addEventListener('click', async ()=>{
+    const rid = document.getElementById('roundIdInput').value.trim() || db.collection('rounds').doc().id;
+    const multiplier = Number(document.getElementById('multiplierInput').value) || 2;
+    await db.collection('rounds').doc(rid).set({ winner: null, multiplier, status: 'open', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    document.getElementById('roundIdInput').value = '';
+    loadRounds();
+  });
+
+  document.getElementById('setWinnerBtn').addEventListener('click', async ()=>{
+    const rid = document.getElementById('winnerRoundId').value.trim();
+    const winner = document.getElementById('winnerSetSelect').value;
+    if(!rid){ alert('Round id required'); return }
+    try{
+      const setWinnerFn = funcs.httpsCallable('setWinner');
+      const res = await setWinnerFn({ roundId: rid, winner });
+      document.getElementById('actionMsg').textContent = 'Set winner result: ' + JSON.stringify(res.data || res);
+      document.getElementById('winnerRoundId').value = '';
+      loadRounds();
+    }catch(e){ console.error(e); alert('Failed to set winner: '+(e.message||e.toString())); }
+  });
+
+  async function loadRounds(){
+    const list = document.getElementById('roundList'); list.innerHTML = 'Loading...';
+    const q = await db.collection('rounds').orderBy('createdAt','desc').limit(50).get();
+    list.innerHTML = '';
+    q.forEach(doc=>{
+      const d = doc.data();
+      const el = document.createElement('div'); el.className='round-item';
+      el.innerHTML = `<div><strong>${doc.id}</strong> <small style="color:#888">${d.status||''}</small><br><small style="color:#bbb">mult:${d.multiplier||2} winner:${d.winner||'-'}</small></div>`;
+      el.addEventListener('click', ()=>{ selectRound(doc.id,el,d); });
+      list.appendChild(el);
+    });
+  }
+
+  function selectRound(id,el,data){
+    selectedRoundId = id;
+    // highlight
+    document.querySelectorAll('.round-item').forEach(x=>x.style.background='transparent');
+    el.style.background = '#0b1220';
+    document.getElementById('actionMsg').textContent = `Selected ${id} (status ${data.status})`;
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadRounds);
+
+  document.getElementById('settleBtn').addEventListener('click', async ()=>{
+    if(!selectedRoundId){ alert('Select a round first'); return }
+    document.getElementById('actionMsg').textContent = 'Settling...';
+    try{
+      const settleFn = funcs.httpsCallable('settleRound');
+      const res = await settleFn({ roundId: selectedRoundId });
+      document.getElementById('actionMsg').textContent = JSON.stringify(res.data || res);
+      loadRounds();
+    }catch(e){
+      console.error(e);
+      document.getElementById('actionMsg').textContent = 'Error: ' + (e.message||e.toString());
+    }
+  });
+</script>
+</body>
+</html>

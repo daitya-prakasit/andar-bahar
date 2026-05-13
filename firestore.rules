@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // users collection
+    match /users/{userId} {
+      // Allow authenticated user to read their own user doc
+      allow get, list: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      // Prevent clients from updating balance/wins/losses/total directly
+      allow update: if false;
+
+      // transactions subcollection - read only for owner
+      match /transactions/{txId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        // Clients cannot create transaction documents directly
+        allow create: if false;
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // bets subcollection - clients may only read their own bets
+      match /bets/{betId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        // Creation of bets should be via server/cloud function to ensure atomicity & validation
+        allow create: if false;
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+
+    // processedPayments collection - only server should write
+    match /processedPayments/{pid} {
+      allow read: if false; // hide
+      allow write: if false;
+    }
+
+    // Public reading of game configuration (if any) can be allowed here with restrictions
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if false; // only server should change
+    }
+
+    // rounds collection - only admin (custom claim) or server should write/close rounds
+    match /rounds/{roundId} {
+      allow read: if true; // rounds can be read publicly to show open/closed state
+      allow create: if request.auth != null && request.auth.token.admin == true; // admin can create
+      allow update: if request.auth != null && request.auth.token.admin == true; // admin only
+      allow delete: if false; // avoid deletes via client
+    }
+
+    // adminLogs - only server/admin can write, hide reads
+    match /adminLogs/{logId} {
+      allow read: if false;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+  }
+}
