@@ -76,7 +76,7 @@
         <div class="input-group"><label>🔒 Password</label><input type="password" id="loginPassword" placeholder="••••••••"></div>
         <p class="error-msg" id="loginError"></p>
         <button class="btn btn-gold" onclick="login()">🔐 LOGIN</button>
-        <p style="margin-top:10px;"><span class="link-text" onclick="toggleForm('signup')">New user? Sign Up</span></p>
+        <p style="margin-top:10px;display:flex;gap:10px;align-items:center;"><span class="link-text" onclick="toggleForm('signup')">New user? Sign Up</span> <span class="link-text" onclick="toggleForm('forgot')">Forgot Password?</span></p>
     </div>
 
     <div id="signupForm" class="hidden">
@@ -85,6 +85,13 @@
         <p class="error-msg" id="signupError"></p>
         <button class="btn btn-gold" onclick="signup()">✨ SIGN UP</button>
         <p style="margin-top:10px;"><span class="link-text" onclick="toggleForm('login')">Already have account? Login</span></p>
+    </div>
+
+    <div id="forgotForm" class="hidden">
+        <div class="input-group"><label>📧 Enter your email</label><input type="email" id="forgotEmail" placeholder="email@example.com"></div>
+        <p class="error-msg" id="forgotError"></p>
+        <button class="btn btn-gold" onclick="sendPasswordReset()">🔁 Send Reset Link</button>
+        <p style="margin-top:10px;"><span class="link-text" onclick="toggleForm('login')">Back to Login</span></p>
     </div>
 </div>
 
@@ -105,10 +112,13 @@
     function toggleForm(f){
         document.getElementById('loginForm').classList.add('hidden');
         document.getElementById('signupForm').classList.add('hidden');
+        document.getElementById('forgotForm').classList.add('hidden');
         document.getElementById('loginError').style.display='none';
         document.getElementById('signupError').style.display='none';
-        if(f==='login')document.getElementById('loginForm').classList.remove('hidden');
-        else document.getElementById('signupForm').classList.remove('hidden');
+        document.getElementById('forgotError').style.display='none';
+        if(f==='login') document.getElementById('loginForm').classList.remove('hidden');
+        else if(f==='signup') document.getElementById('signupForm').classList.remove('hidden');
+        else if(f==='forgot') document.getElementById('forgotForm').classList.remove('hidden');
     }
 
     function login(){
@@ -133,6 +143,15 @@
         })
         .then(()=>{showToast('Account created');setTimeout(()=>window.location.href='game.html',700)})
         .catch(err=>{let m='Signup failed!';if(err.code==='auth/email-already-in-use')m='Email exists!';showError('signupError',m);});
+    }
+
+    function sendPasswordReset(){
+        const e = document.getElementById('forgotEmail').value.trim();
+        if(!e){showError('forgotError','Enter your email');return}
+        document.getElementById('forgotError').style.display='none';
+        auth.sendPasswordResetEmail(e)
+        .then(()=>{showToast('Reset link sent to your email');setTimeout(()=>toggleForm('login'),1200)})
+        .catch(err=>{let m='Failed to send reset link'; if(err.code==='auth/user-not-found') m='No account with this email'; showError('forgotError',m);});
     }
 
     function showError(id,msg){const el=document.getElementById(id);el.textContent='❌ '+msg;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}
